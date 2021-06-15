@@ -2,7 +2,7 @@
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
   Copyright (C) 2004-2008 Tord Romstad (Glaurung author)
   Copyright (C) 2008-2015 Marco Costalba, Joona Kiiski, Tord Romstad
-  Copyright (C) 2015-2021 Marco Costalba, Joona Kiiski, Gary Linscott, Tord Romstad
+  Copyright (C) 2015-2020 Marco Costalba, Joona Kiiski, Gary Linscott, Tord Romstad
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -79,6 +79,7 @@ extern Bitboard LineBB[SQUARE_NB][SQUARE_NB];
 extern Bitboard PseudoAttacks[PIECE_TYPE_NB][SQUARE_NB];
 extern Bitboard PawnAttacks[COLOR_NB][SQUARE_NB];
 extern Bitboard BishopAttacks[COLOR_NB][SQUARE_NB];
+extern Bitboard QueenAttacks[COLOR_NB][SQUARE_NB];
 
 
 /// Magic holds all magic bitboards relevant data for a single square
@@ -107,7 +108,7 @@ extern Magic RookMagics[SQUARE_NB];
 extern Magic BishopMagics[SQUARE_NB];
 
 inline Bitboard square_bb(Square s) {
-  assert(s >= SQ_A1 && s <= SQ_H8);
+  assert(is_ok(s));
   return SquareBB[s];
 }
 
@@ -120,12 +121,18 @@ inline Bitboard  operator^( Bitboard  b, Square s) { return b ^  square_bb(s); }
 inline Bitboard& operator|=(Bitboard& b, Square s) { return b |= square_bb(s); }
 inline Bitboard& operator^=(Bitboard& b, Square s) { return b ^= square_bb(s); }
 
+inline Bitboard  operator&(Square s, Bitboard b) { return b & s; }
+inline Bitboard  operator|(Square s, Bitboard b) { return b | s; }
+inline Bitboard  operator^(Square s, Bitboard b) { return b ^ s; }
+
+inline Bitboard  operator|(Square s, Square s2) { return square_bb(s) | s2; }
+
 constexpr bool more_than_one(Bitboard b) {
   return b & (b - 1);
 }
 
-inline bool opposite_colors(Square s1, Square s2) {
-  return bool(DarkSquares & s1) != bool(DarkSquares & s2);
+constexpr bool opposite_colors(Square s1, Square s2) {
+  return (s1 + rank_of(s1) + s2 + rank_of(s2)) & 1;
 }
 
 
@@ -149,7 +156,7 @@ inline Bitboard file_bb(Square s) {
 }
 
 
-/// shift() moves a bitboard one step along direction D
+/// shift() moves a bitboard one or two steps as specified by the direction D
 
 template<Direction D>
 constexpr Bitboard shift(Bitboard b) {
@@ -169,6 +176,16 @@ template<Color C>
 constexpr Bitboard pawn_attacks_bb(Bitboard b) {
   return C == WHITE ? shift<NORTH_WEST>(b) | shift<NORTH_EAST>(b)
                     : shift<SOUTH_WEST>(b) | shift<SOUTH_EAST>(b);
+}
+template<Color C>
+constexpr Bitboard bishop_attacks_bb(Bitboard b) {
+  return C == WHITE ? shift<NORTH_WEST>(b) | shift<NORTH_EAST>(b) | shift<NORTH>(b) | shift<SOUTH_WEST>(b) | shift<SOUTH_EAST>(b)
+                    : shift<SOUTH_WEST>(b) | shift<SOUTH_EAST>(b) | shift<SOUTH>(b) | shift<NORTH_WEST>(b) | shift<NORTH_EAST>(b);
+}
+template<Color C>
+constexpr Bitboard queen_attacks_bb(Bitboard b) {
+  return C == WHITE ? shift<NORTH_WEST>(b) | shift<NORTH_EAST>(b) | shift<SOUTH_WEST>(b) | shift<SOUTH_EAST>(b)
+                    : shift<SOUTH_WEST>(b) | shift<SOUTH_EAST>(b) | shift<NORTH_WEST>(b) | shift<NORTH_EAST>(b);
 }
 
 
@@ -194,8 +211,8 @@ inline Bitboard adjacent_files_bb(Square s) {
 /// If the given squares are not on a same file/rank/diagonal, return 0.
 
 inline Bitboard between_bb(Square s1, Square s2) {
-  return LineBB[s1][s2] & ( (AllSquares << (s1 +  (s1 < s2)))
-                           ^(AllSquares << (s2 + !(s1 < s2))));
+  Bitboard b = LineBB[s1][s2] & ((AllSquares << s1) ^ (AllSquares << s2));
+  return b & (b - 1); //exclude lsb
 }
 
 
@@ -204,8 +221,8 @@ inline Bitboard between_bb(Square s1, Square s2) {
 /// forward_ranks_bb(BLACK, SQ_D3) will return the 16 squares on ranks 1 and 2.
 
 inline Bitboard forward_ranks_bb(Color c, Square s) {
-  return c == WHITE ? ~Rank1BB << 8 * (rank_of(s) - RANK_1)
-                    : ~Rank8BB >> 8 * (RANK_8 - rank_of(s));
+  return c == WHITE ? ~Rank1BB << 8 * relative_rank(WHITE, s)
+                    : ~Rank8BB >> 8 * relative_rank(BLACK, s);
 }
 
 
@@ -250,8 +267,15 @@ template<> inline int distance<File>(Square x, Square y) { return std::abs(file_
 template<> inline int distance<Rank>(Square x, Square y) { return std::abs(rank_of(x) - rank_of(y)); }
 template<> inline int distance<Square>(Square x, Square y) { return SquareDistance[x][y]; }
 
-template<class T> constexpr const T& clamp(const T& v, const T& lo, const T&  hi) {
-  return v < lo ? lo : v > hi ? hi : v;
+inline int edge_distance(File f) { return std::min(f, File(FILE_H - f)); }
+inline int edge_distance(Rank r) { return std::min(r, Rank(RANK_8 - r)); }
+
+/// Return the target square bitboard if we do not step off the board, empty otherwise
+
+inline Bitboard safe_destination(Square s, int step)
+{
+    Square to = Square(s + step);
+    return is_ok(to) && distance(s, to) <= 2 ? square_bb(to) : Bitboard(0);
 }
 
 /// attacks_bb() returns a bitboard representing all the squares attacked by a
@@ -369,13 +393,18 @@ inline Square msb(Bitboard b) {
 /// pop_lsb() finds and clears the least significant bit in a non-zero bitboard
 
 inline Square pop_lsb(Bitboard* b) {
+  assert(*b);
   const Square s = lsb(*b);
   *b &= *b - 1;
   return s;
 }
 
 
-/// frontmost_sq() returns the most advanced square for the given color
-inline Square frontmost_sq(Color c, Bitboard b) { return c == WHITE ? msb(b) : lsb(b); }
+/// frontmost_sq() returns the most advanced square for the given color,
+/// requires a non-zero bitboard.
+inline Square frontmost_sq(Color c, Bitboard b) {
+  assert(b);
+  return c == WHITE ? msb(b) : lsb(b);
+}
 
 #endif // #ifndef BITBOARD_H_INCLUDED

@@ -2,7 +2,7 @@
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
   Copyright (C) 2004-2008 Tord Romstad (Glaurung author)
   Copyright (C) 2008-2015 Marco Costalba, Joona Kiiski, Tord Romstad
-  Copyright (C) 2015-2021 Marco Costalba, Joona Kiiski, Gary Linscott, Tord Romstad
+  Copyright (C) 2015-2020 Marco Costalba, Joona Kiiski, Gary Linscott, Tord Romstad
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -38,14 +38,14 @@ namespace {
   template<Color Us, GenType Type>
   ExtMove* generate_pawn_moves(const Position& pos, ExtMove* moveList, Bitboard target) {
 
-    // Compute some compile time parameters relative to the white side
-    constexpr Color     Them     = (Us == WHITE ? BLACK      : WHITE);
+    constexpr Color     Them     = ~Us;
     constexpr Bitboard  TRank5BB = (Us == WHITE ? Rank5BB    : Rank4BB);
     constexpr Bitboard  TRank3BB = (Us == WHITE ? Rank3BB    : Rank6BB);
-    constexpr Direction Up       = (Us == WHITE ? NORTH      : SOUTH);
+    constexpr Direction Up       = pawn_push(Us);
     constexpr Direction UpRight  = (Us == WHITE ? NORTH_EAST : SOUTH_WEST);
     constexpr Direction UpLeft   = (Us == WHITE ? NORTH_WEST : SOUTH_EAST);
 
+    const Square ksq = pos.square<KING>(Them);
     Bitboard emptySquares;
 
     Bitboard pawnsOn5    = pos.pieces(Us, PAWN) &  TRank5BB;
@@ -70,8 +70,6 @@ namespace {
 
         if (Type == QUIET_CHECKS)
         {
-            Square ksq = pos.square<KING>(Them);
-
             b1 &= pos.attacks_from<PAWN>(ksq, Them);
             b2 &= pos.attacks_from<PAWN>(ksq, Them);
 
@@ -153,7 +151,7 @@ namespace {
   ExtMove* generate_moves(const Position& pos, ExtMove* moveList, Color us,
                           Bitboard target) {
 
-    assert(Pt != KING && Pt != PAWN);
+    static_assert(Pt != KING && Pt != PAWN, "Unsupported piece type in generate_moves()");
 
     const Square* pl = pos.squares<Pt>(us);
 
@@ -216,7 +214,7 @@ namespace {
 template<GenType Type>
 ExtMove* generate(const Position& pos, ExtMove* moveList) {
 
-  assert(Type == CAPTURES || Type == QUIETS || Type == NON_EVASIONS);
+  static_assert(Type == CAPTURES || Type == QUIETS || Type == NON_EVASIONS, "Unsupported type in generate()");
   assert(!pos.checkers());
 
   Color us = pos.side_to_move();
@@ -243,15 +241,12 @@ ExtMove* generate<QUIET_CHECKS>(const Position& pos, ExtMove* moveList) {
   assert(!pos.checkers());
 
   Color us = pos.side_to_move();
-  Bitboard dc = pos.blockers_for_king(~us) & pos.pieces(us);
+  Bitboard dc = pos.blockers_for_king(~us) & pos.pieces(us) & ~pos.pieces(PAWN);
 
   while (dc)
   {
      Square from = pop_lsb(&dc);
      PieceType pt = type_of(pos.piece_on(from));
-
-     if (pt == PAWN)
-         continue; // Will be generated together with direct checks
 
      Bitboard b = (pt == BISHOP ? pos.attacks_from<BISHOP>(from, us) : pos.attacks_from(pt, from)) & ~pos.pieces();
 
@@ -283,10 +278,7 @@ ExtMove* generate<EVASIONS>(const Position& pos, ExtMove* moveList) {
   // the king evasions in order to skip known illegal moves, which avoids any
   // useless legality checks later on.
   while (sliders)
-  {
-      Square checksq = pop_lsb(&sliders);
-      sliderAttacks |= LineBB[checksq][ksq] ^ checksq;
-  }
+      sliderAttacks |= LineBB[ksq][pop_lsb(&sliders)] & ~pos.checkers();
 
   // Generate evasions for king, capture and non capture moves
   Bitboard b = pos.attacks_from<KING>(ksq) & ~pos.pieces(us) & ~sliderAttacks;
