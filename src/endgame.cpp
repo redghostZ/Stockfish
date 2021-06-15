@@ -2,7 +2,7 @@
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
   Copyright (C) 2004-2008 Tord Romstad (Glaurung author)
   Copyright (C) 2008-2015 Marco Costalba, Joona Kiiski, Tord Romstad
-  Copyright (C) 2015-2020 Marco Costalba, Joona Kiiski, Gary Linscott, Tord Romstad
+  Copyright (C) 2015-2021 Marco Costalba, Joona Kiiski, Gary Linscott, Tord Romstad
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -43,7 +43,7 @@ namespace {
     100, 90, 80, 70, 70, 80, 90, 100
   };
 
-  // Corn
+  // Corn redghost
   constexpr int PushToCorn[SQUARE_NB] = {
     200, 150, 100, 70, 70, 100, 150, 200,
     150,  70,  60, 50, 50,  60,  70, 150,
@@ -84,7 +84,7 @@ namespace {
   // Tables used to drive a piece towards or away from another piece
   constexpr int PushClose[8] = { 0, 0, 100, 80, 60, 40, 20, 10 };
   constexpr int PushAway [8] = { 0, 5, 20, 40, 60, 80, 90, 100 };
-  constexpr int PushWin[8] = { 0, 120, 100, 80, 60, 40, 20, 10 };
+  constexpr int PushWin[8] = { 0, 120, 100, 80, 60, 40, 20, 10 }; // redghost
 
 #ifndef NDEBUG
   bool verify_material(const Position& pos, Color c, Value npm, int pawnsCnt) {
@@ -296,7 +296,7 @@ Value Endgame<KQsPsK>::operator()(const Position& pos) const {
 }
 
 
-//KXKRR
+//KXKRR redghost begin
 template<>
 Value Endgame<KXKRR>::operator()(const Position& pos) const {
 
@@ -564,8 +564,8 @@ Value Endgame<KRQQKR>::operator()(const Position& pos) const {
 
   if (opposite_colors(queenSq, SQ_A1))
   {
-      winnerKSq = flip_file(winnerKSq);
-      loserKSq  = flip_file(loserKSq);
+      winnerKSq = ~(winnerKSq);
+      loserKSq  = ~(loserKSq);
   }
 
   Value result =  pos.non_pawn_material(strongSide)
@@ -574,7 +574,7 @@ Value Endgame<KRQQKR>::operator()(const Position& pos) const {
                 + PushToCorn[loserKSq];
 
   if (pos.count<KING>(strongSide))
-    result += PushToQueenCorners[opposite_colors(queenSq, SQ_A1) ? flip_file(loserKSq) : loserKSq]
+    result += PushToQueenCorners[opposite_colors(queenSq, SQ_A1) ? ~(loserKSq) : loserKSq]
             + PushClose[distance(winnerKSq, loserKSq)];
   if (pos.count<QUEEN>(strongSide) || pos.attacks_from<QUEEN>(queenSq) || pos.attacks_from<ROOK>(rookSq))
     result += PushToCorn[loserKSq]
@@ -1853,9 +1853,9 @@ Value Endgame<KNQK>::operator()(const Position& pos) const {
   // to drive the enemy toward corners A8 or H1.
   if (opposite_colors(queenSq, SQ_A1))
   {
-      winnerKSq = flip_file(winnerKSq);
-      loserKSq  = flip_file(loserKSq);
-      knightSq  = flip_file(knightSq);
+      winnerKSq = ~(winnerKSq);
+      loserKSq  = ~(loserKSq);
+      knightSq  = ~(knightSq);
   }
 
   // Weak king not in queen's corner could be draw
@@ -2101,9 +2101,9 @@ Value Endgame<KNQKP>::operator()(const Position& pos) const {
   // to drive the enemy toward corners A8 or H1.
   if (opposite_colors(queenSq, SQ_A1))
   {
-      winnerKSq = flip_file(winnerKSq);
-      loserKSq  = flip_file(loserKSq);
-      knightSq  = flip_file(knightSq);
+      winnerKSq = ~(winnerKSq);
+      loserKSq  = ~(loserKSq);
+      knightSq  = ~(knightSq);
   }
 
   // Weak king not in queen's corner could be draw
@@ -2141,9 +2141,9 @@ Value Endgame<KNQKQ>::operator()(const Position& pos) const {
   // to drive the enemy toward corners A8 or H1.
   if (opposite_colors(queenSq, SQ_A1))
   {
-      winnerKSq = flip_file(winnerKSq);
-      loserKSq  = flip_file(loserKSq);
-      knightSq  = flip_file(knightSq);
+      winnerKSq = ~(winnerKSq);
+      loserKSq  = ~(loserKSq);
+      knightSq  = ~(knightSq);
   }
 
   // Weak king not in queen's corner could be draw
@@ -2181,9 +2181,9 @@ Value Endgame<KNQKB>::operator()(const Position& pos) const {
   // to drive the enemy toward corners A8 or H1.
   if (opposite_colors(queenSq, SQ_A1))
   {
-      winnerKSq = flip_file(winnerKSq);
-      loserKSq  = flip_file(loserKSq);
-      knightSq  = flip_file(knightSq);
+      winnerKSq = ~(winnerKSq);
+      loserKSq  = ~(loserKSq);
+      knightSq  = ~(knightSq);
   }
 
   // Weak king not in queen's corner could be draw
@@ -2259,9 +2259,9 @@ Value Endgame<KNQKQQ>::operator()(const Position& pos) const {
   // to drive the enemy toward corners A8 or H1.
   if (opposite_colors(queenSq, SQ_A1))
   {
-      winnerKSq = flip_file(winnerKSq);
-      loserKSq  = flip_file(loserKSq);
-      knightSq  = flip_file(knightSq);
+      winnerKSq = ~(winnerKSq);
+      loserKSq  = ~(loserKSq);
+      knightSq  = ~(knightSq);
   }
 
   // Weak king not in queen's corner could be draw
@@ -3038,7 +3038,7 @@ Value Endgame<KNNKNQ>::operator()(const Position& pos) const {
 }
 
 
-//KNNKNB
+//KNNKNB redghost end.
 template<>
 Value Endgame<KNNKNB>::operator()(const Position& pos) const {
 
@@ -3050,7 +3050,7 @@ Value Endgame<KNNKNB>::operator()(const Position& pos) const {
 }
 
 
-/// Some cases of trivial draws
+/// Some cases of trivial draws  redghost end.
 template<> Value Endgame<KNNK>::operator()(const Position&) const { return VALUE_DRAW; }
 
 template<> Value Endgame<KQQK>::operator()(const Position&) const { return VALUE_DRAW; }

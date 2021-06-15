@@ -2,7 +2,7 @@
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
   Copyright (C) 2004-2008 Tord Romstad (Glaurung author)
   Copyright (C) 2008-2015 Marco Costalba, Joona Kiiski, Tord Romstad
-  Copyright (C) 2015-2020 Marco Costalba, Joona Kiiski, Gary Linscott, Tord Romstad
+  Copyright (C) 2015-2021 Marco Costalba, Joona Kiiski, Gary Linscott, Tord Romstad
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -34,12 +34,12 @@ namespace {
   constexpr int QuadraticOurs[][PIECE_TYPE_NB] = {
     //            OUR PIECES
     // Q-pair pawn queen bishop knight rook
-    {1437                                }, // Q-pair
+    {1439                                }, // Q-pair
     {  40,   39                          }, // Pawn
     {   0,   69,    0                    }, // Queen
-    {  69,  104,  133,   137             }, // Bishop
-    {  32,  255,    2,     4,  -60       }, // Knight      OUR PIECES
-    { -26,   -2,   52,   110,   47, -207 }  // Rook
+    {   0,  104,  133,   138             }, // Bishop
+    {  32,  255,    2,     4,    2       }, // Knight      OUR PIECES
+    { -26,   -2,   52,   110,   47, -208 }  // Rook
   };
 
   constexpr int QuadraticTheirs[][PIECE_TYPE_NB] = {
@@ -48,13 +48,13 @@ namespace {
     {   0                                }, // Q-pair
     {  36,    0                          }, // Pawn
     {  40,   50,     0                   }, // Queen
-    {  60,   66,    25,     0            }, // Bishop
+    {  59,   65,    25,     0            }, // Bishop
     {   9,   63,     7,    42,    0      }, // Knight      OUR PIECES
-    {  47,   39,    -8,   -24,   24,   0 }  // Rook
+    {  46,   39,    -8,   -24,   24,   0 }  // Rook
   };
 
   // Endgame evaluation and scaling functions are accessed directly and not through
-  // the function maps because they correspond to more than one material hash key.
+  // the function maps because they correspond to more than one material hash key. redghost
   Endgame<KXK>      EvaluateKXK[]      = { Endgame<KXK>(WHITE),      Endgame<KXK>(BLACK) };
   Endgame<KQsPsK>   EvaluateKQsPsK[]   = { Endgame<KQsPsK>(WHITE),   Endgame<KQsPsK>(BLACK) };
   Endgame<KXKRR>    EvaluateKXKRR[]    = { Endgame<KXKRR>(WHITE),    Endgame<KXKRR>(BLACK) };
@@ -114,7 +114,7 @@ namespace {
   Endgame<KRNQQKRB> EvaluateKRNQQKRB[] = { Endgame<KRNQQKRB>(WHITE), Endgame<KRNQQKRB>(BLACK) };
   Endgame<KRQKBQ>   EvaluateKRQKBQ[]   = { Endgame<KRQKBQ>(WHITE),   Endgame<KRQKBQ>(BLACK) };
   
-  // Helper used to detect a given material distribution
+  // Helper used to detect a given material distribution redghost
   bool is_KXK(const Position& pos, Color us) {
     return  !more_than_one(pos.pieces(~us))
           && (pos.count<PAWN>(us) || !pos.count<PAWN>(us))
@@ -665,7 +665,7 @@ namespace {
           && !pos.count<PAWN>(~us)
           && pos.non_pawn_material(~us) == BishopValueMg + QueenValueMg
           && pos.count<BISHOP>(~us) == 1
-          && pos.count<QUEEN>(~us) == 1;
+          && pos.count<QUEEN>(~us) == 1; // redghost
   }
 
   /// imbalance() calculates the imbalance by comparing the piece count of each
@@ -673,7 +673,7 @@ namespace {
   template<Color Us>
   int imbalance(const int pieceCount[][PIECE_TYPE_NB]) {
 
-    constexpr Color Them = ~Us;
+    constexpr Color Them = (Us == WHITE ? BLACK : WHITE);
 
     int bonus = 0;
 
@@ -718,7 +718,7 @@ Entry* probe(const Position& pos) {
 
   Value npm_w = pos.non_pawn_material(WHITE);
   Value npm_b = pos.non_pawn_material(BLACK);
-  Value npm   = Utility::clamp(npm_w + npm_b, EndgameLimit, MidgameLimit);
+  Value npm   = clamp(npm_w + npm_b, EndgameLimit, MidgameLimit);
 
   // Map total non-pawn material into [PHASE_ENDGAME, PHASE_MIDGAME]
   e->gamePhase = Phase(((npm - EndgameLimit) * PHASE_MIDGAME) / (MidgameLimit - EndgameLimit));

@@ -2,7 +2,7 @@
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
   Copyright (C) 2004-2008 Tord Romstad (Glaurung author)
   Copyright (C) 2008-2015 Marco Costalba, Joona Kiiski, Tord Romstad
-  Copyright (C) 2015-2020 Marco Costalba, Joona Kiiski, Gary Linscott, Tord Romstad
+  Copyright (C) 2015-2021 Marco Costalba, Joona Kiiski, Gary Linscott, Tord Romstad
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -35,22 +35,24 @@ TranspositionTable TT; // Our global transposition table
 
 void TTEntry::save(Key k, Value v, bool pv, Bound b, Depth d, Move m, Value ev) {
 
+  assert(d / ONE_PLY * ONE_PLY == d);
+
   // Preserve any existing move for the same position
   if (m || (k >> 48) != key16)
       move16 = (uint16_t)m;
 
   // Overwrite less valuable entries
   if (  (k >> 48) != key16
-      || d - DEPTH_OFFSET > depth8 - 4
+      ||(d - DEPTH_OFFSET) / ONE_PLY > depth8 - 4
       || b == BOUND_EXACT)
   {
-      assert(d >= DEPTH_OFFSET);
+      assert((d - DEPTH_OFFSET) / ONE_PLY >= 0);
 
       key16     = (uint16_t)(k >> 48);
       value16   = (int16_t)v;
       eval16    = (int16_t)ev;
       genBound8 = (uint8_t)(TT.generation8 | uint8_t(pv) << 2 | b);
-      depth8    = (uint8_t)(d - DEPTH_OFFSET);
+      depth8    = (uint8_t)((d - DEPTH_OFFSET) / ONE_PLY);
   }
 }
 
@@ -63,10 +65,11 @@ void TranspositionTable::resize(size_t mbSize) {
 
   Threads.main()->wait_for_search_finished();
 
-  aligned_ttmem_free(mem);
-
   clusterCount = mbSize * 1024 * 1024 / sizeof(Cluster);
-  table = static_cast<Cluster*>(aligned_ttmem_alloc(clusterCount * sizeof(Cluster), mem));
+
+  free(mem);
+  mem = malloc(clusterCount * sizeof(Cluster) + CacheLineSize - 1);
+
   if (!mem)
   {
       std::cerr << "Failed to allocate " << mbSize
@@ -74,6 +77,7 @@ void TranspositionTable::resize(size_t mbSize) {
       exit(EXIT_FAILURE);
   }
 
+  table = (Cluster*)((uintptr_t(mem) + CacheLineSize - 1) & ~(CacheLineSize - 1));
   clear();
 }
 
@@ -83,28 +87,7 @@ void TranspositionTable::resize(size_t mbSize) {
 
 void TranspositionTable::clear() {
 
-  std::vector<std::thread> threads;
-
-  for (size_t idx = 0; idx < static_cast<size_t>(Options["Threads"]); ++idx)
-  {
-      threads.emplace_back([this, idx]() {
-
-          // Thread binding gives faster search on systems with a first-touch policy
-          if (Options["Threads"] > 8)
-              WinProcGroup::bindThisThread(idx);
-
-          // Each thread will zero its part of the hash table
-          const size_t stride = clusterCount / Options["Threads"],
-                       start  = stride * idx,
-                       len    = idx != static_cast<size_t>(Options["Threads"]) - 1 ?
-                                stride : clusterCount - start;
-
-          std::memset(&table[start], 0, len * sizeof(Cluster));
-      });
-  }
-
-  for (std::thread& th: threads)
-      th.join();
+  std::memset(table, 0, clusterCount * sizeof(Cluster));
 }
 
 /// TranspositionTable::probe() looks up the current position in the transposition
@@ -148,9 +131,9 @@ TTEntry* TranspositionTable::probe(const Key key, bool& found) const {
 int TranspositionTable::hashfull() const {
 
   int cnt = 0;
-  for (int i = 0; i < 1000; ++i)
+  for (int i = 0; i < 1000 / ClusterSize; ++i)
       for (int j = 0; j < ClusterSize; ++j)
           cnt += (table[i].entry[j].genBound8 & 0xF8) == generation8;
 
-  return cnt / ClusterSize;
+  return cnt * 1000 / (ClusterSize * (1000 / ClusterSize));
 }

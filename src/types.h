@@ -2,7 +2,7 @@
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
   Copyright (C) 2004-2008 Tord Romstad (Glaurung author)
   Copyright (C) 2008-2015 Marco Costalba, Joona Kiiski, Tord Romstad
-  Copyright (C) 2015-2020 Marco Costalba, Joona Kiiski, Gary Linscott, Tord Romstad
+  Copyright (C) 2015-2021 Marco Costalba, Joona Kiiski, Gary Linscott, Tord Romstad
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -43,7 +43,6 @@
 #include <climits>
 #include <cstdint>
 #include <cstdlib>
-#include <algorithm>
 
 #if defined(_MSC_VER)
 // Disable some silly and noisy warning from MSVC compiler
@@ -157,17 +156,14 @@ enum Value : int {
   VALUE_INFINITE  = 32001,
   VALUE_NONE      = 32002,
 
-  VALUE_TB_WIN_IN_MAX_PLY  =  VALUE_MATE - 2 * MAX_PLY,
-  VALUE_TB_LOSS_IN_MAX_PLY = -VALUE_TB_WIN_IN_MAX_PLY,
-  VALUE_MATE_IN_MAX_PLY  =  VALUE_MATE - MAX_PLY,
-  VALUE_MATED_IN_MAX_PLY = -VALUE_MATE_IN_MAX_PLY,
+  VALUE_MATE_IN_MAX_PLY  =  VALUE_MATE - 2 * MAX_PLY,
+  VALUE_MATED_IN_MAX_PLY = -VALUE_MATE + 2 * MAX_PLY,
 
-  PawnValueMg   = 207,   PawnValueEg   = 240,
-  QueenValueMg  = 351,   QueenValueEg  = 409,
-  BishopValueMg = 545,   BishopValueEg = 616,
-  KnightValueMg = 779,   KnightValueEg = 852,
-  RookValueMg   = 1281,  RookValueEg   = 1379,
-  Tempo = 28,
+  PawnValueMg   = 165,   PawnValueEg   = 208, //redghost
+  QueenValueMg  = 354,   QueenValueEg  = 430,
+  BishopValueMg = 545,   BishopValueEg = 625,
+  KnightValueMg = 782,   KnightValueEg = 865,
+  RookValueMg   = 1289,  RookValueEg   = 1378,
 
   MidgameLimit  = 15258, EndgameLimit  = 3915
 };
@@ -185,24 +181,23 @@ enum Piece {
   PIECE_NB = 16
 };
 
-constexpr Value PieceValue[PHASE_NB][PIECE_NB] = {
-  { VALUE_ZERO, PawnValueMg, QueenValueMg, BishopValueMg, KnightValueMg, RookValueMg, VALUE_ZERO, VALUE_ZERO,
-    VALUE_ZERO, PawnValueMg, QueenValueMg, BishopValueMg, KnightValueMg, RookValueMg, VALUE_ZERO, VALUE_ZERO },
-  { VALUE_ZERO, PawnValueEg, QueenValueEg, BishopValueEg, KnightValueEg, RookValueEg, VALUE_ZERO, VALUE_ZERO,
-    VALUE_ZERO, PawnValueEg, QueenValueEg, BishopValueEg, KnightValueEg, RookValueEg, VALUE_ZERO, VALUE_ZERO }
+extern Value PieceValue[PHASE_NB][PIECE_NB];
+
+enum Depth : int {
+
+  ONE_PLY = 1,
+
+  DEPTH_ZERO          =  0 * ONE_PLY,
+  DEPTH_QS_CHECKS     =  0 * ONE_PLY,
+  DEPTH_QS_NO_CHECKS  = -1 * ONE_PLY,
+  DEPTH_QS_RECAPTURES = -5 * ONE_PLY,
+
+  DEPTH_NONE   = -6 * ONE_PLY,
+  DEPTH_OFFSET = DEPTH_NONE,
+  DEPTH_MAX    = MAX_PLY * ONE_PLY
 };
 
-typedef int Depth;
-
-enum : int {
-
-  DEPTH_QS_CHECKS     =  0,
-  DEPTH_QS_NO_CHECKS  = -1,
-  DEPTH_QS_RECAPTURES = -5,
-
-  DEPTH_NONE   = -6,
-  DEPTH_OFFSET = DEPTH_NONE
-};
+static_assert(!(ONE_PLY & (ONE_PLY - 1)), "ONE_PLY is not a power of 2");
 
 enum Square : int {
   SQ_A1, SQ_B1, SQ_C1, SQ_D1, SQ_E1, SQ_F1, SQ_G1, SQ_H1,
@@ -283,6 +278,7 @@ inline T& operator*=(T& d, int i) { return d = T(int(d) * i); }    \
 inline T& operator/=(T& d, int i) { return d = T(int(d) / i); }
 
 ENABLE_FULL_OPERATORS_ON(Value)
+ENABLE_FULL_OPERATORS_ON(Depth)
 ENABLE_FULL_OPERATORS_ON(Direction)
 
 ENABLE_INCR_OPERATORS_ON(PieceType)
@@ -330,21 +326,16 @@ inline Score operator*(Score s, int i) {
   return result;
 }
 
-/// Multiplication of a Score by a boolean
-inline Score operator*(Score s, bool b) {
-  return b ? s : SCORE_ZERO;
-}
-
 constexpr Color operator~(Color c) {
   return Color(c ^ BLACK); // Toggle color
 }
 
-constexpr Square flip_rank(Square s) {
-  return Square(s ^ SQ_A8);
+constexpr Square operator~(Square s) {
+  return Square(s ^ SQ_A8); // Vertical flip SQ_A1 -> SQ_A8
 }
 
-constexpr Square flip_file(Square s) {
-  return Square(s ^ SQ_H1);
+constexpr File operator~(File f) {
+  return File(f ^ FILE_H); // Horizontal flip FILE_A -> FILE_H
 }
 
 constexpr Piece operator~(Piece pc) {
@@ -428,10 +419,6 @@ constexpr Move make_move(Square from, Square to) {
   return Move((from << 6) + to);
 }
 
-constexpr Move reverse_move(Move m) {
-  return make_move(to_sq(m), from_sq(m));
-}
-
 template<MoveType T>
 constexpr Move make(Square from, Square to, PieceType pt = QUEEN) {
   return Move(T + ((pt - QUEEN) << 12) + (from << 6) + to);
@@ -442,5 +429,3 @@ constexpr bool is_ok(Move m) {
 }
 
 #endif // #ifndef TYPES_H_INCLUDED
-
-#include "tune.h" // Global visibility to tuning setup

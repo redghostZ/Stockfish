@@ -2,7 +2,7 @@
   Stockfish, a UCI chess playing engine derived from Glaurung 2.1
   Copyright (C) 2004-2008 Tord Romstad (Glaurung author)
   Copyright (C) 2008-2015 Marco Costalba, Joona Kiiski, Tord Romstad
-  Copyright (C) 2015-2020 Marco Costalba, Joona Kiiski, Gary Linscott, Tord Romstad
+  Copyright (C) 2015-2021 Marco Costalba, Joona Kiiski, Gary Linscott, Tord Romstad
 
   Stockfish is free software: you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -32,7 +32,6 @@ Bitboard LineBB[SQUARE_NB][SQUARE_NB];
 Bitboard PseudoAttacks[PIECE_TYPE_NB][SQUARE_NB];
 Bitboard PawnAttacks[COLOR_NB][SQUARE_NB];
 Bitboard BishopAttacks[COLOR_NB][SQUARE_NB];
-Bitboard QueenAttacks[COLOR_NB][SQUARE_NB];
 
 Magic RookMagics[SQUARE_NB];
 Magic BishopMagics[SQUARE_NB];
@@ -77,11 +76,7 @@ void Bitboards::init() {
 
   for (Square s1 = SQ_A1; s1 <= SQ_H8; ++s1)
       for (Square s2 = SQ_A1; s2 <= SQ_H8; ++s2)
-          SquareDistance[s1][s2] = std::max(distance<File>(s1, s2), distance<Rank>(s1, s2));
-
-  Direction RookDirections[] = { NORTH, EAST, SOUTH, WEST };
-
-  init_magics(RookTable, RookMagics, RookDirections);
+              SquareDistance[s1][s2] = std::max(distance<File>(s1, s2), distance<Rank>(s1, s2));
 
   int steps[][6] = { {}, { 7, 9 }, { 7, 9 }, { 7, 8, 9, -7, -9 }, { 6, 10, 15, 17 }, {}, { 1, 7, 8, 9 } };
 
@@ -103,6 +98,10 @@ void Bitboards::init() {
                   }
               }
 
+  Direction RookDirections[] = { NORTH, EAST, SOUTH, WEST };
+
+  init_magics(RookTable, RookMagics, RookDirections);
+
   for (Square s1 = SQ_A1; s1 <= SQ_H8; ++s1)
   {
       PseudoAttacks[ROOK][s1] = attacks_bb<  ROOK>(s1, 0);
@@ -119,16 +118,20 @@ namespace {
 
   Bitboard sliding_attack(Direction directions[], Square sq, Bitboard occupied) {
 
-    Bitboard attacks = 0;
+    Bitboard attack = 0;
 
     for (int i = 0; i < 4; ++i)
-    {
-        Square s = sq;
-        while(safe_destination(s, directions[i]) && !(occupied & s))
-            attacks |= (s += directions[i]);
-    }
+        for (Square s = sq + directions[i];
+             is_ok(s) && distance(s, s - directions[i]) == 1;
+             s += directions[i])
+        {
+            attack |= s;
 
-    return attacks;
+            if (occupied & s)
+                break;
+        }
+
+    return attack;
   }
 
 
